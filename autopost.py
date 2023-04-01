@@ -70,8 +70,8 @@ firebase_app = firebase_admin.initialize_app(firebase_credentials, {
 posted_media_ids_ref = db.reference('posted_media_ids')
 
 def main():
-    username = "midjourney.artss"
-    password = "u3990716ma"
+    username = os.environ["IG_USERNAME"]
+    password = os.environ["IG_PASSWORD"]
     target_username = "aiart.ly"
     interval = 60 * 1  # Post every hour
 
