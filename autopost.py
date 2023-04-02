@@ -11,10 +11,10 @@ from firebase_admin import credentials, db
 
 load_dotenv()
 
-Username = os.environ.get("IG_USERNAME")
-Password = os.environ.get("IG_PASSWORD")
-targetUrl = os.environ.get("TARGET_USERNAME")
-databaseUrl = os.environ.get("DATABASE_URL")
+Username = os.environ.get("IG_USERNAME") or os.environ["IG_USERNAME"]
+Password = os.environ.get("IG_PASSWORD") or os.environ["IG_PASSWORD"]
+targetUrl = os.environ.get("TARGET_USERNAME") or os.environ["TARGET_USERNAME"]
+databaseUrl = os.environ.get("DATABASE_URL") or os.environ["DATABASE_URL"]
 
 def login(username, password):
     print("Logging in...")
@@ -106,8 +106,8 @@ firebase_app = firebase_admin.initialize_app(firebase_credentials, {
 posted_shortcodes_ref = db.reference('posted_shortcodes')
 
 def main():
-    username = Username or os.environ["IG_USERNAME"]
-    password = Password or os.environ["IG_PASSWORD"]
+    username = Username 
+    password = Password 
     target_username = targetUrl
     interval = 60 * 1  # Post every hour
 
