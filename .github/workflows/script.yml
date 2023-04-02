@@ -1,0 +1,39 @@
+name: Run Python Script
+
+on:
+  schedule:
+    - cron: '0 * * * *' # This will run the workflow every hour
+
+jobs:
+  run_script:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+        
+    - name: Cache Python dependencies
+      uses: actions/cache@v2
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install instagrapi Pillow requests python-dotenv firebase-admin
+
+    - name: Run Python script
+      env:
+        IG_USERNAME: ${{ secrets.IG_USERNAME }}
+        IG_PASSWORD: ${{ secrets.IG_PASSWORD }}
+        TARGET_USERNAME: ${{ secrets.TARGET_USERNAME }}
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      run: |
+        python autopost.py
