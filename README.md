@@ -53,8 +53,8 @@ The bot will now periodically check for new posts from the target Instagram acco
 
 ```python
 interval = 60  # Set the interval between repost attempts (in seconds)
-
-##Disclaimer
+```
+## Disclaimer
 
 This script is for educational purposes only. Please respect Instagram's terms of service and use responsibly.
 
