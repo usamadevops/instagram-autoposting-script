@@ -1,9 +1,20 @@
 import os
 import time
-from instagrapi import Client
-from PIL import Image
 import requests
+from instagrapi import Client
+from instagrapi.types import Usertag, Location
+from typing import List, Dict
+from pathlib import Path
+from dotenv import load_dotenv
+import firebase_admin
+from firebase_admin import credentials, db
 
+load_dotenv()
+
+Username = os.environ.get("IG_USERNAME")
+Password = os.environ.get("IG_PASSWORD")
+targetUrl = os.environ.get("TARGET_USERNAME")
+databaseUrl = os.environ.get("DATABASE_URL")
 
 def login(username, password):
     print("Logging in...")
@@ -12,69 +23,146 @@ def login(username, password):
     print(f"Login successful for user: {username}")
     return client
 
-
-def fetch_latest_post_image(client, target_username):
-    print(f"Fetching the latest post from {target_username}...")
+def fetch_latest_post(client, target_username, posted_shortcodes):
+    print(f"Fetching a post from {target_username}...")
     user_id = client.user_id_from_username(target_username)
-    user_media = client.user_medias(user_id, amount=1)
-    media = user_media[0]
-    media_details = client.media_info(media.pk)
+    user_media = client.user_medias(user_id, amount=20)
 
-    if media_details.media_type == 1:  # Photo
-        image_url = media_details.thumbnail_url
-    elif media_details.media_type == 2:  # Video
-        print(f"Skipping video post from {target_username}")
-        return None
-    elif media_details.media_type == 8:  # Carousel
-        for item in media_details.carousel:
-            if item.media_type == 1:
-                image_url = item.thumbnail_url
-                break
+    for media in user_media:
+        media_shortcode = media.code
+        if media_shortcode in posted_shortcodes:
+            continue
+
+        media_details = client.media_info(media.pk)
+        caption = media_details.caption_text
+
+        if media_details.media_type == 1:  # Photo
+            media_type = "photo"
+            image_url = media_details.thumbnail_url
+            resources = None
+            video_url = None
+            thumbnail_url = None
+        elif media_details.media_type == 2:  # Video, Reel, or IGTV
+            product_type = media_details.product_type
+            if product_type == "feed":
+                media_type = "video"
+            elif product_type == "igtv":
+                media_type = "igtv"
+            elif product_type == "clips":
+                media_type = "reel"
+            else:
+                continue
+            video_url = media_details.video_url
+            thumbnail_url = media_details.thumbnail_url
+            resources = None
+        elif media_details.media_type == 8:  # Carousel (Album)
+            media_type = "album"
+            resources = media_details.resources
+            image_url = None
+            video_url = None
+            thumbnail_url = None
         else:
-            print(f"Skipping carousel post with no image media from {target_username}")
-            return None
-    else:
-        print(f"Unexpected media type from {target_username}")
-        return None
+            continue
 
-    response = requests.get(image_url)
-    image_filename = f"{target_username}_latest_post.jpg"
+        return media_type, image_url, video_url, thumbnail_url, resources, caption,media_shortcode
 
-    with open(image_filename, 'wb') as f:
+    print(f"No suitable post found for {target_username}")
+    return None, None, None, None, None, None
+
+def download_file(url, filename):
+    response = requests.get(url)
+    with open(filename, 'wb') as f:
         f.write(response.content)
 
-    print(f"Image fetched: {image_filename}")
-    return image_filename
+def photo_upload(client, path: Path, caption: str, usertags: List[Usertag] = [], location: Location = None, extra_data: Dict = {}):
+    media = client.photo_upload(path, caption, usertags=usertags, location=location, extra_data=extra_data)
+    return media
 
+def video_upload(client, path: Path, caption: str, thumbnail: Path, usertags: List[Usertag] = [], location: Location = None, extra_data: Dict = {}):
+    media = client.video_upload(path, caption, thumbnail, usertags=usertags, location=location, extra_data=extra_data)
+    return media
 
+def album_upload(client, paths: List[Path], caption: str, usertags: List[Usertag] = [], location: Location = None, extra_data: Dict = {}):
+    media = client.album_upload(paths, caption, usertags=usertags, location=location, extra_data=extra_data)
+    return media
 
+def igtv_upload(client, path: Path, title: str, caption: str, thumbnail: Path, usertags: List[Usertag] = [], location: Location = None, extra_data: Dict = {}):
+    media = client.igtv_upload(path, title, caption, thumbnail, usertags=usertags, location=location, extra_data=extra_data)
+    return media
 
-def post_image(client, image_filename):
-    print(f"Posting image: {image_filename}")
-    caption = f"Posted by {client.username}"
-    media = client.photo_upload(image_filename, caption)
-    client.media_edit(media.pk, caption)
-    print("Image posted.")
+def clip_upload(client, path: Path, caption: str, thumbnail: Path, usertags: List[Usertag] = [], location: Location = None, extra_data: Dict = {}):
+    media = client.clip_upload(path, caption, thumbnail, usertags=usertags, location=location, extra_data=extra_data)
+    return media
+
+# Load Firebase credentials from the JSON key file
+firebase_credentials = credentials.Certificate("service-account-key.json")
+
+# Initialize the Firebase app
+firebase_app = firebase_admin.initialize_app(firebase_credentials, {
+    'databaseURL': databaseUrl
+})
+
+# Get a reference to the posted_media_ids node in the database
+posted_shortcodes_ref = db.reference('posted_shortcodes')
 
 def main():
-    username = "YOUR_OWN_USERNAME"
-    password = "YOUR_ACCOUNT_PASSWORD"
-    target_username = "TARGET_USERNAME"
-    interval = 60 * 60  # Post every hour
+    username = Username or os.environ["IG_USERNAME"]
+    password = Password or os.environ["IG_PASSWORD"]
+    target_username = targetUrl
+    interval = 60 * 1  # Post every hour
 
     client = login(username, password)
 
+    # Load posted media IDs from Firebase Realtime Database or create an empty list
+    posted_shortcodes = posted_shortcodes_ref.get() or []
+
     while True:
         try:
-            image_filename = fetch_latest_post_image(client, target_username)
-            post_image(client, image_filename)
-            os.remove(image_filename)  # Clean up the downloaded image file
+            media_type, image_url, video_url, thumbnail_url, resources, caption,media_shortcode = fetch_latest_post(client, target_username,posted_shortcodes)
+
+            if media_type == "photo":
+                filename = f"{target_username}_latest_post.jpg"
+                download_file(image_url, filename)
+                media = photo_upload(client, filename, caption)
+            elif media_type == "video" or media_type == "reel" or media_type == "igtv":
+                video_filename = f"{target_username}_latest_post.mp4"
+                thumbnail_filename = f"{target_username}_latest_post_thumbnail.jpg"
+                download_file(video_url, video_filename)
+                download_file(thumbnail_url, thumbnail_filename)
+                if media_type == "video":
+                    media = video_upload(client, video_filename, caption, thumbnail_filename)
+                elif media_type == "reel":
+                    media = clip_upload(client, video_filename, caption, thumbnail_filename)
+                else:
+                    media = igtv_upload(client, video_filename, caption, caption, thumbnail_filename)
+            elif media_type == "album":
+                paths = []
+                for i, resource in enumerate(resources):
+                    if resource.media_type == 1:
+                        ext = '.jpg'
+                        url = resource.thumbnail_url
+                    elif resource.media_type == 2:
+                        ext = '.mp4'
+                        url = resource.video_url
+                    filename = f"{target_username}_latest_post_{i}{ext}"
+                    download_file(url, filename)
+                    paths.append(filename)
+                media = album_upload(client, paths, caption)
+                for path in paths:
+                    os.remove(path)
+            else:
+                print("No suitable post found.")
+                continue
+
+            # Save the posted media ID to the Firebase Realtime Database
+            posted_shortcodes.append(media_shortcode)
+            posted_shortcodes_ref.set(posted_shortcodes)
+
             print(f"Waiting {interval} seconds before the next post...")
             time.sleep(interval)
         except Exception as e:
             print(f"Error: {e}")
             time.sleep(60)  # Wait a minute before retrying in case of errors
-
 
 if __name__ == "__main__":
     main()
