@@ -28,4 +28,4 @@ jobs:
         TARGET_USERNAME: ${{ secrets.TARGET_USERNAME }}
         DATABASE_URL: ${{ secrets.DATABASE_URL }}
       run: |
-        python repost_bot.py
+        python autopost.py
