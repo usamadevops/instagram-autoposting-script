@@ -3,9 +3,18 @@ import time
 from instagrapi import Client
 from PIL import Image
 import requests
+import os
+from dotenv import load_dotenv
 import json
 import firebase_admin
 from firebase_admin import credentials, db
+
+load_dotenv()
+
+Username = os.environ.get("IG_USERNAME")
+Password = os.environ.get("IG_PASSWORD")
+targetUrl = os.environ.get("TARGET_USERNAME")
+databaseUrl=os.environ.get("DATABASE_URL")
 
 def login(username, password):
     print("Logging in...")
@@ -63,16 +72,16 @@ firebase_credentials = credentials.Certificate("service-account-key.json")
 
 # Initialize the Firebase app
 firebase_app = firebase_admin.initialize_app(firebase_credentials, {
-    'databaseURL': 'https://autopost-9e607-default-rtdb.asia-southeast1.firebasedatabase.app/'
+    'databaseURL': databaseUrl
 })
 
 # Get a reference to the posted_media_ids node in the database
 posted_media_ids_ref = db.reference('posted_media_ids')
 
 def main():
-    username = os.environ["IG_USERNAME"]
-    password = os.environ["IG_PASSWORD"]
-    target_username = "aiart.ly"
+    username = Username or os.environ["IG_USERNAME"]
+    password = Password or os.environ["IG_PASSWORD"]
+    target_username = targetUrl
     interval = 60 * 1  # Post every hour
 
 
